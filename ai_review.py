@@ -24,18 +24,21 @@ if not REPO:
     logger.error("GITHUB_REPOSITORY environment variable is required")
     sys.exit(1)
 
-# Validate command line arguments
-if len(sys.argv) < 2:
-    logger.error("Error: PR number is required")
-    print("Usage: python ai_review.py <PR_NUMBER>")
-    sys.exit(1)
-
-PR_NUMBER = sys.argv[1]
+# Get PR number from command line or environment
+if len(sys.argv) >= 2:
+    PR_NUMBER = sys.argv[1]
+else:
+    # Try to get from environment variable
+    PR_NUMBER = os.getenv("PR_NUMBER")
+    if not PR_NUMBER:
+        logger.error("Error: PR number is required either as command line argument or PR_NUMBER environment variable")
+        print("Usage: python ai_review.py <PR_NUMBER>")
+        sys.exit(1)
 
 # Validate PR number format
 try:
-    int(PR_NUMBER)
-except ValueError:
+    PR_NUMBER = int(PR_NUMBER)
+except (ValueError, TypeError):
     logger.error(f"Error: Invalid PR number format: {PR_NUMBER}")
     sys.exit(1)
 
@@ -88,14 +91,70 @@ def query_llm(prompt, max_retries=3):
     
     return "Error: Failed to get response after all retry attempts"
 
+def generate_pr_description(pr, diff_summary, test_summary, coverage_summary):
+    """Generate a comprehensive PR description using AI"""
+    
+    description_prompt = f"""
+You are an expert software developer. Based on the following pull request information, generate a comprehensive PR description with the following sections:
+
+## Description
+## 🔧 Changes
+## 🧪 Unit Test Results
+## 📈 Code Coverage Report
+## 🤖 AI Review Feedback
+
+Current PR Title: {pr.title}
+Current PR Description: {pr.body or 'No description provided'}
+
+Code Changes:
+{diff_summary}
+
+Test Results:
+{test_summary}
+
+Code Coverage:
+{coverage_summary}
+
+Please generate a professional, comprehensive PR description that includes:
+1. A clear description of what this PR accomplishes
+2. Detailed list of changes made
+3. Summary of test results
+4. Code coverage analysis
+5. AI-powered code review feedback
+
+Format the response with proper markdown sections and emojis.
+"""
+
+    logger.info("Generating comprehensive PR description")
+    ai_description = query_llm(description_prompt)
+    
+    if ai_description.startswith("Error:"):
+        logger.error(f"LLM returned error for description generation: {ai_description}")
+        return f"""## Description
+{pr.body or 'No description provided'}
+
+## 🔧 Changes
+- Code changes detected in this PR
+
+## 🧪 Unit Test Results
+{test_summary}
+
+## 📈 Code Coverage Report
+{coverage_summary}
+
+## 🤖 AI Review Feedback
+Unable to generate AI review due to technical issues. Please review manually."""
+    
+    return ai_description
+
 def main():
     try:
         logger.info(f"Starting AI review for PR #{PR_NUMBER}")
         
         # Initialize GitHub client
         g = Github(GITHUB_TOKEN)
-        repo = g.get_repo(str(REPO))  # REPO is validated above, so it's not None here
-        pr = repo.get_pull(int(PR_NUMBER))
+        repo = g.get_repo(str(REPO))
+        pr = repo.get_pull(int(PR_NUMBER))  # PR_NUMBER is validated as int above
         
         logger.info(f"Retrieved PR: {pr.title}")
 
@@ -116,11 +175,12 @@ def main():
         test_summary = os.getenv("TEST_SUMMARY", "Test results not available.")
         coverage_summary = os.getenv("COVERAGE_SUMMARY", "Code coverage not available.")
 
+        # Generate comprehensive PR description
+        comprehensive_description = generate_pr_description(pr, diff_summary, test_summary, coverage_summary)
+        
+        # Generate detailed AI review
         review_prompt = f"""
-You are an expert Python code reviewer. Carefully review the following pull request:
-
-## Description of Changes:
-{pr_description}
+You are an expert Python code reviewer. Provide a detailed technical review of the following pull request:
 
 ## Code Changes:
 {diff_summary}
@@ -131,29 +191,38 @@ You are an expert Python code reviewer. Carefully review the following pull requ
 ## Code Coverage:
 {coverage_summary}
 
-Provide:
-1. Description feedback
-2. Unit test coverage check
-3. Code coverage comments
-4. Code quality and Python best practices feedback
-5. Checklist status
+Please provide a comprehensive technical review covering:
+1. Code quality and best practices
+2. Potential bugs or issues
+3. Security considerations
+4. Performance implications
+5. Maintainability concerns
+6. Suggestions for improvement
 
-Please provide your feedback in a structured and professional format.
+Format your response professionally with clear sections and actionable feedback.
 """
 
-        logger.info("Sending review prompt to LLM")
+        logger.info("Generating detailed AI review")
         ai_feedback = query_llm(review_prompt)
         
         if ai_feedback.startswith("Error:"):
-            logger.error(f"LLM returned error: {ai_feedback}")
-            ai_feedback = "Unable to generate AI review due to technical issues. Please review manually."
+            logger.error(f"LLM returned error for review: {ai_feedback}")
+            ai_feedback = "Unable to generate detailed AI review due to technical issues. Please review manually."
 
-        # Create the review comment
+        # Update PR description with comprehensive content
+        logger.info("Updating PR description with comprehensive content")
+        try:
+            pr.edit(body=comprehensive_description)
+            logger.info("Successfully updated PR description")
+        except Exception as e:
+            logger.error(f"Failed to update PR description: {e}")
+
+        # Create detailed review comment
         comment_body = f"""
 # 🤖 AI Code Review Feedback
 
 <details>
-<summary>🔍 **Review Summary**</summary>
+<summary>🔍 **Detailed Technical Review**</summary>
 
 {ai_feedback}
 
@@ -183,7 +252,7 @@ Please provide your feedback in a structured and professional format.
 _This review was automatically generated using an AI-powered code review tool._
 """
 
-        logger.info("Posting review comment to PR")
+        logger.info("Posting detailed review comment to PR")
         pr.create_issue_comment(comment_body)
         logger.info("AI review completed successfully")
 

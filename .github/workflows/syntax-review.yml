@@ -4,13 +4,13 @@ on:
   pull_request:
     types: [opened, synchronize, reopened]
 
-permissions:
-  pull-requests: write
-  contents: read
-
 jobs:
   ai_code_review:
     runs-on: ubuntu-latest
+    
+    permissions:
+      pull-requests: write  # Allows commenting on PRs
+      contents: read        # Allows reading repository content
 
     steps:
       - name: Checkout code
@@ -23,15 +23,7 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
-
-      - name: Check required secrets
-        run: |
-          if [ -z "${{ secrets.HUGGINGFACE_TOKEN }}" ]; then
-            echo "Warning: HUGGINGFACE_TOKEN is not set"
-          else
-            echo "HUGGINGFACE_TOKEN is available"
-          fi 
+          pip install -r requirements.txt 
 
       
       - name: Run Unit Tests and Generate Report
@@ -64,8 +56,9 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HF_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
         run: |
-          python ai_review.py "${{ github.event.pull_request.number }}" || echo "AI review failed, but continuing workflow"
+          python ai_review.py "${{ github.event.pull_request.number }}"
 
       - name: Export Test Summary
         id: test-summary
