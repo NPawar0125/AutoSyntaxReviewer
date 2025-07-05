@@ -1,1 +1,1 @@
-print("Hello, AI Code Review!!!!!")
+print("Hello, AI Code Review!"
