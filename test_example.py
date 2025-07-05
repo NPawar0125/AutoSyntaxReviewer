@@ -4,6 +4,6 @@ def test_example():
 
 def test_string():
     """Another simple test"""
-    assert "hello" + " world" == "hello world      " 
+    assert "hello" + " world" == "hello world" 
 
 print(f"Hello World........")

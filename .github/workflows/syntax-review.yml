@@ -19,31 +19,37 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -r requirements.txt
+          cd AutoSyntaxReviewer
+          pip install -r requirements.txt 
 
       
       - name: Run Unit Tests and Generate Report
         run: |
           pip install pytest
-          pytest --junitxml=result.xml || true  # Continue even if tests fail
+          cd AutoSyntaxReviewer
+          pytest test_example.py --junitxml=result.xml || true  # Continue even if tests fail
 
       - name: Parse Test Results
         run: |
+          cd AutoSyntaxReviewer
           python parse_test_results.py result.xml
 
       - name: Run Tests with Coverage
         run: |
           pip install coverage
-          coverage run -m pytest --junitxml=result.xml || true
+          cd AutoSyntaxReviewer
+          coverage run -m pytest test_example.py --junitxml=result.xml || true
           coverage report > coverage.txt
 
       - name: Parse Code Coverage
         run: |
+          cd AutoSyntaxReviewer
           python parse_coverage.py coverage.txt
 
       - name: Export Coverage Summary
         id: coverage-summary
         run: |
+          cd AutoSyntaxReviewer
           COVERAGE=$(cat coverage_summary.txt)
           echo "coverage=$COVERAGE" >> $GITHUB_ENV
 
@@ -53,12 +59,12 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           HF_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
         run: |
+          cd AutoSyntaxReviewer
           python ai_review.py "${{ github.event.pull_request.number }}"
 
       - name: Export Test Summary
         id: test-summary
         run: |
+          cd AutoSyntaxReviewer
           SUMMARY=$(cat test_summary.txt)
           echo "summary=$SUMMARY" >> $GITHUB_ENV
-
-
