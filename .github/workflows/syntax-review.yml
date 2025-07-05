@@ -1,0 +1,64 @@
+name: AI Code Review
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  ai_code_review:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      
+      - name: Run Unit Tests and Generate Report
+        run: |
+          pip install pytest
+          pytest --junitxml=result.xml || true  # Continue even if tests fail
+
+      - name: Parse Test Results
+        run: |
+          python parse_test_results.py result.xml
+
+      - name: Run Tests with Coverage
+        run: |
+          pip install coverage
+          coverage run -m pytest --junitxml=result.xml || true
+          coverage report > coverage.txt
+
+      - name: Parse Code Coverage
+        run: |
+          python parse_coverage.py coverage.txt
+
+      - name: Export Coverage Summary
+        id: coverage-summary
+        run: |
+          COVERAGE=$(cat coverage_summary.txt)
+          echo "coverage=$COVERAGE" >> $GITHUB_ENV
+
+
+      - name: Run AI code review
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          HF_TOKEN: ${{ secrets.HUGGINGFACE_TOKEN }}
+        run: |
+          python ai_review.py "${{ github.event.pull_request.number }}"
+
+      - name: Export Test Summary
+        id: test-summary
+        run: |
+          SUMMARY=$(cat test_summary.txt)
+          echo "summary=$SUMMARY" >> $GITHUB_ENV
+
+
