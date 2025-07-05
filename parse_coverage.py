@@ -21,4 +21,4 @@ except:
 
 # Write coverage summary to a file
 with open('coverage_summary.txt', 'w') as f:
-    f.write(f"Code Coverage: {coverage_percent}")
+    f.write(f"Code Coverage: {coverage_percent}") 

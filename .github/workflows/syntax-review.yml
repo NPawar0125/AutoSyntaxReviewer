@@ -19,7 +19,8 @@ jobs:
 
       - name: Install dependencies
         run: |
-          pip install -r AutoSyntaxReviewer/requirements.txt 
+          cd AutoSyntaxReviewer
+          pip install -r requirements.txt 
 
       
       - name: Run Unit Tests and Generate Report
@@ -67,5 +68,3 @@ jobs:
           cd AutoSyntaxReviewer
           SUMMARY=$(cat test_summary.txt)
           echo "summary=$SUMMARY" >> $GITHUB_ENV
-
-

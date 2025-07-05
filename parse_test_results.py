@@ -16,5 +16,4 @@ summary = f"Total: {total}, Passed: {passed}, Failures: {failures}, Errors: {err
 
 # Write summary to a text file to be read later
 with open('test_summary.txt', 'w') as f:
-    f.write(summary)
-
+    f.write(summary) 
