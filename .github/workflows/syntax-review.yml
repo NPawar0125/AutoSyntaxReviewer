@@ -7,6 +7,10 @@ on:
 jobs:
   ai_code_review:
     runs-on: ubuntu-latest
+    
+    permissions:
+      pull-requests: write  # Allows commenting on PRs
+      contents: read        # Allows reading repository content
 
     steps:
       - name: Checkout code
