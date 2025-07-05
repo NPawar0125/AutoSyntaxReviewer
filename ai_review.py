@@ -8,7 +8,13 @@ from github import Github
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
 logger = logging.getLogger(__name__)
 
-HF_API_URL = "https://api-inference.huggingface.co/models/bigcode/starcoder"
+# Try multiple model URLs for better reliability
+HF_API_URLS = [
+    "https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium",
+    "https://api-inference.huggingface.co/models/gpt2",
+    "https://api-inference.huggingface.co/models/facebook/opt-350m",
+    "https://api-inference.huggingface.co/models/bigcode/starcoder"
+]
 HF_TOKEN = os.getenv("HF_TOKEN")
 GITHUB_TOKEN = os.getenv("GITHUB_TOKEN")
 REPO = os.getenv("GITHUB_REPOSITORY")
@@ -52,44 +58,45 @@ def truncate_diff(diff_text, max_length=8000):
 
 def query_llm(prompt, max_retries=3):
     """Query the LLM with retry logic and proper error handling"""
-    for attempt in range(max_retries):
-        try:
-            logger.info(f"Attempting to query LLM (attempt {attempt + 1}/{max_retries})")
-            payload = {"inputs": prompt}
-            response = requests.post(
-                HF_API_URL, 
-                headers=headers, 
-                json=payload, 
-                timeout=30  # 30 second timeout
-            )
-            response.raise_for_status()  # Raise exception for bad status codes
-            
-            result = response.json()
-            if result and len(result) > 0:
-                logger.info("Successfully received response from LLM")
-                return result[0]["generated_text"]
-            else:
-                logger.warning("Empty response from LLM")
-                return "No response generated from AI model"
+    for url in HF_API_URLS:
+        for attempt in range(max_retries):
+            try:
+                logger.info(f"Attempting to query LLM at {url} (attempt {attempt + 1}/{max_retries})")
+                payload = {"inputs": prompt}
+                response = requests.post(
+                    url, 
+                    headers=headers, 
+                    json=payload, 
+                    timeout=30  # 30 second timeout
+                )
+                response.raise_for_status()  # Raise exception for bad status codes
                 
-        except requests.exceptions.Timeout:
-            logger.warning(f"Timeout on attempt {attempt + 1}")
-            if attempt == max_retries - 1:
-                return "Error: Request timed out after multiple attempts"
-        except requests.exceptions.RequestException as e:
-            logger.error(f"Request error on attempt {attempt + 1}: {str(e)}")
-            if attempt == max_retries - 1:
-                return f"Error calling AI API: {str(e)}"
-        except (KeyError, IndexError) as e:
-            logger.error(f"Error parsing AI response on attempt {attempt + 1}: {str(e)}")
-            if attempt == max_retries - 1:
-                return f"Error parsing AI response: {str(e)}"
-        except Exception as e:
-            logger.error(f"Unexpected error on attempt {attempt + 1}: {str(e)}")
-            if attempt == max_retries - 1:
-                return f"Unexpected error: {str(e)}"
+                result = response.json()
+                if result and len(result) > 0:
+                    logger.info(f"Successfully received response from LLM at {url}")
+                    return result[0]["generated_text"]
+                else:
+                    logger.warning(f"Empty response from LLM at {url}")
+                    continue
+                    
+            except requests.exceptions.Timeout:
+                logger.warning(f"Timeout on attempt {attempt + 1} for {url}")
+                if attempt == max_retries - 1:
+                    continue  # Try next URL
+            except requests.exceptions.RequestException as e:
+                logger.error(f"Request error on attempt {attempt + 1} for {url}: {str(e)}")
+                if attempt == max_retries - 1:
+                    continue  # Try next URL
+            except (KeyError, IndexError) as e:
+                logger.error(f"Error parsing AI response on attempt {attempt + 1} for {url}: {str(e)}")
+                if attempt == max_retries - 1:
+                    continue  # Try next URL
+            except Exception as e:
+                logger.error(f"Unexpected error on attempt {attempt + 1} for {url}: {str(e)}")
+                if attempt == max_retries - 1:
+                    continue  # Try next URL
     
-    return "Error: Failed to get response after all retry attempts"
+    return "Error: Failed to get response from all available AI models"
 
 def generate_pr_description(pr, diff_summary, test_summary, coverage_summary):
     """Generate a comprehensive PR description using AI"""
@@ -177,6 +184,25 @@ def main():
 
         # Generate comprehensive PR description
         comprehensive_description = generate_pr_description(pr, diff_summary, test_summary, coverage_summary)
+        
+        # If AI generation failed, create a basic description
+        if comprehensive_description.startswith("Error:"):
+            logger.warning("AI generation failed, creating basic description")
+            comprehensive_description = f"""## Description
+{pr.body or 'No description provided'}
+
+## 🔧 Changes
+- Code changes detected in this PR
+- Files modified: {', '.join([f.filename for f in files])}
+
+## 🧪 Unit Test Results
+{test_summary}
+
+## 📈 Code Coverage Report
+{coverage_summary}
+
+## 🤖 AI Review Feedback
+Unable to generate AI review due to technical issues. Please review manually."""
         
         # Generate detailed AI review
         review_prompt = f"""
